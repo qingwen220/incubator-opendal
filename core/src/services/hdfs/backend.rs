@@ -188,6 +188,7 @@ impl Accessor for HdfsBackend {
                 list: true,
                 list_with_delimiter_slash: true,
 
+                rename: true,
                 blocking: true,
 
                 ..Default::default()
@@ -268,6 +269,14 @@ impl Accessor for HdfsBackend {
         let f = open_options.async_open(&p).await.map_err(parse_io_error)?;
 
         Ok((RpWrite::new(), HdfsWriter::new(f)))
+    }
+
+    async fn rename(&self, from: &str, to: &str, args: OpRename) -> Result<RpRename> {
+        let from_path = build_rooted_abs_path(&self.root, from);
+        let to_path =  build_rooted_abs_path(&self.root, to);
+        self.client.rename_file( &from_path, &to_path).map_err(parse_io_error)?;
+
+        Ok(RpRename::default())
     }
 
     async fn stat(&self, path: &str, _: OpStat) -> Result<RpStat> {
@@ -404,6 +413,14 @@ impl Accessor for HdfsBackend {
             .map_err(parse_io_error)?;
 
         Ok((RpWrite::new(), HdfsWriter::new(f)))
+    }
+
+    fn blocking_rename(&self, from: &str, to: &str, args: OpRename) -> Result<RpRename> {
+        let from_path = build_rooted_abs_path(&self.root, from);
+        let to_path =  build_rooted_abs_path(&self.root, to);
+        self.client.rename_file( &from_path, &to_path).map_err(parse_io_error)?;
+
+        Ok(RpRename::default())
     }
 
     fn blocking_stat(&self, path: &str, _: OpStat) -> Result<RpStat> {
