@@ -26,11 +26,15 @@ use crate::ErrorKind;
 ///
 /// Skip utf-8 check to allow invalid path input.
 pub fn parse_io_error(err: io::Error) -> Error {
-    use io::ErrorKind::*;
+    use std::io::ErrorKind::*;
 
     let (kind, retryable) = match err.kind() {
         NotFound => (ErrorKind::NotFound, false),
         PermissionDenied => (ErrorKind::PermissionDenied, false),
+        AlreadyExists => (ErrorKind::AlreadyExists, false),
+        InvalidInput => (ErrorKind::InvalidInput, false),
+        Unsupported => (ErrorKind::Unsupported, false),
+
         Interrupted | UnexpectedEof | TimedOut | WouldBlock => (ErrorKind::Unexpected, true),
         _ => (ErrorKind::Unexpected, true),
     };
@@ -43,3 +47,4 @@ pub fn parse_io_error(err: io::Error) -> Error {
 
     err
 }
+
