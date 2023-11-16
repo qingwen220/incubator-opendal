@@ -160,7 +160,6 @@ unsafe impl Send for HdfsBackend {}
 unsafe impl Sync for HdfsBackend {}
 
 impl HdfsBackend {
-
     fn create_parent_if_need(&self, path: &str) -> Result<()> {
         let result = self.client.metadata(path);
         match result {
@@ -177,11 +176,13 @@ impl HdfsBackend {
                             ErrorKind::Unexpected,
                             "path should have parent but not, it must be malformed",
                         )
-                            .with_context("input", path)
+                        .with_context("input", path)
                     })?
                     .to_path_buf();
 
-                self.client.create_dir(&parent.to_string_lossy()).map_err(parse_io_error)?;
+                self.client
+                    .create_dir(&parent.to_string_lossy())
+                    .map_err(parse_io_error)?;
             }
             Ok(metadata) => {
                 if metadata.is_file() {
@@ -195,7 +196,6 @@ impl HdfsBackend {
 
         Ok(())
     }
-
 }
 
 #[async_trait]
@@ -295,7 +295,8 @@ impl Accessor for HdfsBackend {
                     Error::new(
                         ErrorKind::Unexpected,
                         "path should have parent but not, it must be malformed",
-                    ).with_context("input", &p)
+                    )
+                    .with_context("input", &p)
                 })?
                 .to_path_buf();
 
@@ -322,10 +323,7 @@ impl Accessor for HdfsBackend {
             open_options.write(true);
         }
 
-        let f = open_options
-            .async_open(&p)
-            .await
-            .map_err(parse_io_error)?;
+        let f = open_options.async_open(&p).await.map_err(parse_io_error)?;
 
         Ok((RpWrite::new(), HdfsWriter::new(f)))
     }
@@ -334,10 +332,12 @@ impl Accessor for HdfsBackend {
         let from_path = build_rooted_abs_path(&self.root, from);
         self.client.metadata(&from_path).map_err(parse_io_error)?;
 
-        let to_path =  build_rooted_abs_path(&self.root, to);
+        let to_path = build_rooted_abs_path(&self.root, to);
         self.create_parent_if_need(&to_path)?;
 
-        self.client.rename_file( &from_path, &to_path).map_err(parse_io_error)?;
+        self.client
+            .rename_file(&from_path, &to_path)
+            .map_err(parse_io_error)?;
 
         Ok(RpRename::default())
     }
@@ -452,33 +452,20 @@ impl Accessor for HdfsBackend {
     fn blocking_write(&self, path: &str, op: OpWrite) -> Result<(RpWrite, Self::BlockingWriter)> {
         let p = build_rooted_abs_path(&self.root, path);
 
-        if let Err(err) = self.client.metadata(&p) {
-            // Early return if other error happened.
-            if err.kind() != io::ErrorKind::NotFound {
-                return Err(parse_io_error(err));
-            }
+        let parent = PathBuf::from(&p)
+            .parent()
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Unexpected,
+                    "path should have parent but not, it must be malformed",
+                )
+                .with_context("input", &p)
+            })?
+            .to_path_buf();
 
-            let parent = PathBuf::from(&p)
-                .parent()
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Unexpected,
-                        "path should have parent but not, it must be malformed",
-                    ).with_context("input", &p)
-                })?
-                .to_path_buf();
-
-            self.client
-                .create_dir(&parent.to_string_lossy())
-                .map_err(parse_io_error)?;
-
-            self.client
-                .open_file()
-                .create(true)
-                .write(true)
-                .open(&p)
-                .map_err(parse_io_error)?;
-        }
+        self.client
+            .create_dir(&parent.to_string_lossy())
+            .map_err(parse_io_error)?;
 
         let mut open_options = self.client.open_file();
         open_options.create(true);
@@ -488,9 +475,7 @@ impl Accessor for HdfsBackend {
             open_options.write(true);
         }
 
-        let f = open_options
-            .open(&p)
-            .map_err(parse_io_error)?;
+        let f = open_options.open(&p).map_err(parse_io_error)?;
 
         Ok((RpWrite::new(), HdfsWriter::new(f)))
     }
@@ -499,10 +484,12 @@ impl Accessor for HdfsBackend {
         let from_path = build_rooted_abs_path(&self.root, from);
         self.client.metadata(&from_path).map_err(parse_io_error)?;
 
-        let to_path =  build_rooted_abs_path(&self.root, to);
+        let to_path = build_rooted_abs_path(&self.root, to);
         self.create_parent_if_need(&to_path)?;
 
-        self.client.rename_file( &from_path, &to_path).map_err(parse_io_error)?;
+        self.client
+            .rename_file(&from_path, &to_path)
+            .map_err(parse_io_error)?;
 
         Ok(RpRename::default())
     }
@@ -571,6 +558,4 @@ impl Accessor for HdfsBackend {
 
         Ok((RpList::default(), Some(rd)))
     }
-
-
 }
