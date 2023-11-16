@@ -161,26 +161,42 @@ unsafe impl Sync for HdfsBackend {}
 
 impl HdfsBackend {
 
-    fn create_parent_if_need(&self, path: &str) -> Result<()>{
-        if let Err(err) = self.client.metadata(path) {
-            // Early return if other error happened.
-            if err.kind() != io::ErrorKind::NotFound {
-                return Err(parse_io_error(err));
+    fn create_parent_if_need(&self, path: &str) -> Result<()> {
+        let result = self.client.metadata(path);
+        match result {
+            Err(err) => {
+                // Early return if other error happened.
+                if err.kind() != io::ErrorKind::NotFound {
+                    return Err(parse_io_error(err));
+                }
+
+                let parent = PathBuf::from(path)
+                    .parent()
+                    .ok_or_else(|| {
+                        Error::new(
+                            ErrorKind::Unexpected,
+                            "path should have parent but not, it must be malformed",
+                        )
+                            .with_context("input", path)
+                    })?
+                    .to_path_buf();
+
+                self.client
+                    .create_dir(&parent.to_string_lossy())
+                    .map_err(parse_io_error)?;
             }
-
-            let parent = PathBuf::from(path)
-                .parent()
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::Unexpected,
-                        "path should have parent but not, it must be malformed",
-                    ).with_context("input", path)
-                })?
-                .to_path_buf();
-
-            self.client
-                .create_dir(&parent.to_string_lossy())
-                .map_err(parse_io_error)?;
+            Ok(metadata) => {
+                if metadata.is_file() {
+                    self.client
+                        .remove_file(&path)
+                        .map_err(parse_io_error)?;
+                } else {
+                    return Err(Error::new(
+                        ErrorKind::IsADirectory,
+                        "path should be a file")
+                        .with_context("input", path))
+                }
+            }
         }
 
         Ok(())
